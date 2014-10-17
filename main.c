@@ -40,7 +40,6 @@ char** tokenify(const char *s,char *seperator) {
 	for(int i = 0; i < count; i++){
 		if(token != NULL){
 			finishArray[i] = removeleadingwhitespace(strdup(token));
-			//printf("RWS(%s)\n",finishArray[i]);
 		}
 		token = strtok(NULL,seperator);
 	}
@@ -77,27 +76,22 @@ void modeprint(int seq){
 }
 
 int modeHandle(int seq, int nextmode, char*** commandList,int i) {
-		//printf("in mode check\n");
 		if(commandList[i][1] == NULL){
-			//printf("Showing current mode\n");
 			modeprint(seq);
 		}
 		else if(strcmp(commandList[i][1],"s") == 0|| strcmp(commandList[i][1],"sequential") == 0|| strcmp(commandList[i][1],"seq") == 0){
-			//printf("change nextmode to 1\n");
 			nextmode = 1;
 		}
 		else if(strcmp(commandList[i][1],"p") == 0|| strcmp(commandList[i][1],"parallel") == 0|| strcmp(commandList[i][1],"par") == 0){
-			//printf("change nextmode to 0\n");
 			nextmode = 0;
 		}
 		else{
-			//printf("%s not a valid mode. Choose parallel or sequential\n",commandList[i][1]);
 			modeprint(seq);
 		}
 		return nextmode;
 }
 int main(int argc, char **argv) {
-	int exit = 0; //tracks exit
+	int completed = 0; //tracks whether or not to exit
 	int seq = 1; //tracks mode (seq = sequential)
 	int nextmode = 1; //changes mode for next line (if changed)
 	while(1) {
@@ -123,20 +117,15 @@ int main(int argc, char **argv) {
 		int commandCount = 0;
 		while(seperatedCommands[commandCount] != NULL){
 			if(strncmp(seperatedCommands[commandCount],"exit",4) == 0){ //if "exit" is a token, change variable to 1
-				//printf("Exit changed to 1\n");
-				exit = 1;
+				completed = 1;
 			}
 			commandList[commandCount] = tokenify(seperatedCommands[commandCount]," ");
 			commandCount++;
 			
 		}
-
 		int i = 0;
-		pid_t pid;
 		if(seq == 1){ //sequential mode
 			while(i < commandCount){
-				//printf("commandList[i][0] = %s\n",commandList[i][0]);
-				//printf("commandList[i][1] = %s\n",commandList[i][1]);
 				if(strncmp(commandList[i][0],"mode",4) == 0){
 					nextmode = modeHandle(seq,nextmode,commandList,i);
 				}
@@ -147,67 +136,49 @@ int main(int argc, char **argv) {
 					}
 					else{
 						//printf("%s\n",commandList[i][0]);
-						if (execv(commandList[i][0], commandList[i]) < 0 && !strcmp(commandList[i][0],"exit") && !strcmp(commandList[i][0],"mode")) {
-    	   					fprintf(stderr, "execv failed: %s\n", strerror(errno));
+						if ((execv(commandList[i][0], commandList[i])) < 0 && (strncmp(commandList[i][0],"exit", 4) != 0) && (strncmp(commandList[i][0],"mode",4) != 0)) {
+    	   						fprintf(stderr, "execv failed: %s\n", strerror(errno));
   						}
-						_exit(EXIT_FAILURE);
+						exit(EXIT_FAILURE);
 					}
 				}
 			i++;
 			}
 		}
-		else{ //parallel mode
-			int n = commandCount;
-			printf("commandCount:%d n:%d\n",commandCount,n);
-			while(i < commandCount){
-				printf("while loop\n");
-				if(strncmp(commandList[i][0],"mode",4) == 0){
-					nextmode = modeHandle(seq,nextmode,commandList,i);
+		
+		/* 
+		Parallel mode
+		Code assistance gained from http://stackoverflow.com/questions/2708477/fork-and-wait-with-two-child-processes
+		*/
+		else{
+			pid_t child_pid, wpid;
+			int status = 0;
+			if(strncmp(commandList[i][0],"mode",4) == 0){
+				nextmode = modeHandle(seq,nextmode,commandList,i);
+			}
+			for (i = 0; i < commandCount; i++) {
+				if ((child_pid = fork()) == 0) {
+					if ((execv(commandList[i][0], commandList[i])) < 0 && (strncmp(commandList[i][0],"exit", 4) != 0) && (strncmp(commandList[i][0],"mode",4) != 0)) {
+    	   					fprintf(stderr, "execv failed: %s\n", strerror(errno));
+  					}
 				}
-				//else{
-					//pid_t pids[n];
-					for(int j = 0; j < n; j++){
-						printf("for loop\n");
-						switch(fork()){
-							case 0:
-								if (execv(commandList[i][0], commandList[i]) < 0 && !strcmp(commandList[i][0],"exit") && !strcmp(commandList[i][0],"mode")) {
-    	   							fprintf(stderr, "execv failed: %s\n", strerror(errno));
-  								}
-								_exit(EXIT_SUCCESS);
-							case -1:
-								perror("fork");
-								_exit(EXIT_FAILURE);
-							default:
-								wait(NULL);
-						}
-					}
-					//if((pids[j] = fork()) < 0){
-					//	perror("fork");
-					//	abort();
-					//}
-						
-						//_exit(EXIT_FAILURE);
-					//int status;
-					//pid_t pid;
-					//while(n > 0){
-						//pid = wait(&status);
-					//	n--;
-					//}
-				//}
-			i++;
+			}
+			while ((wpid = wait(&status)) > 0) {
+			//this doesn't actually do anything, just allows all children to run in parallel instead of stopping and starting after each one
 			}
 		}
 
-		//printf("i = %d\n",i);
-		if(exit == 1 && i == commandCount){
+
+		if(completed == 1 && i == commandCount){
 			return 0;
 		}
-		/*
+
 		for(int j = 0; j < commandCount; j++){ //free everything
 			free_tokens(commandList[j]);
 		}
 		free(commandList);
-		*/
+		free(seperatedCommands);
+
 	}
 	return 0; //test: /bin/ls -t ; exit ; /bin/pwd
 }
