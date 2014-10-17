@@ -123,6 +123,7 @@ int main(int argc, char **argv) {
 			commandCount++;
 			
 		}
+		free_tokens(seperatedCommands);
 		int i = 0;
 		if(seq == 1){ //sequential mode
 			while(i < commandCount){
